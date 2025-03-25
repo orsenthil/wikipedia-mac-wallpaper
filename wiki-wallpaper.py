@@ -322,19 +322,53 @@ def get_screen_size():
     return (1920, 1080)
 
 def set_desktop_wallpaper(image_path):
-    """Set the desktop wallpaper on macOS."""
+    """Set the desktop wallpaper on all displays on macOS."""
     try:
+        # This script sets the wallpaper on all displays
         script = f'''
         tell application "System Events"
-            set desktop picture to POSIX file "{image_path}"
+            set desktopCount to count of desktops
+            repeat with desktopNumber from 1 to desktopCount
+                tell desktop desktopNumber
+                    set picture to "{image_path}"
+                end tell
+            end repeat
         end tell
         '''
-        subprocess.run(['osascript', '-e', script], check=True)
-        print(f"Wallpaper set successfully to {image_path}")
-        return True
-    except subprocess.CalledProcessError as e:
+        
+        result = subprocess.run(['osascript', '-e', script], 
+                               capture_output=True, 
+                               text=True,
+                               check=False)
+        
+        if result.returncode == 0:
+            print(f"Wallpaper set successfully on all displays: {image_path}")
+            return True
+        else:
+            print(f"System Events method failed: {result.stderr}")
+            
+            # Try the Finder method as a fallback
+            finder_script = f'''
+            tell application "Finder"
+                set desktop picture to POSIX file "{image_path}"
+            end tell
+            '''
+            
+            finder_result = subprocess.run(['osascript', '-e', finder_script], 
+                                         capture_output=True, 
+                                         text=True)
+                                         
+            if finder_result.returncode == 0:
+                print(f"Wallpaper set using Finder method (primary display only): {image_path}")
+                return True
+            else:
+                print(f"Finder method also failed: {finder_result.stderr}")
+    except Exception as e:
         print(f"Error setting wallpaper: {e}")
-        return False
+    
+    print(f"\nAutomated methods failed. The wallpaper is saved at: {image_path}")
+    print("You can manually set it as your wallpaper by right-clicking the file and selecting 'Set Desktop Picture'")
+    return False
 
 def main():
     try:
