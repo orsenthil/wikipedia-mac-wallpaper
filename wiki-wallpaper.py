@@ -236,7 +236,7 @@ def create_fallback_image():
 def create_wallpaper(image, description):
     """
     Create a wallpaper with the image centered with a frame and description
-    centered below it with equal borders.
+    centered below it with equal borders and proper text alignment.
     """
     # Get the screen resolution
     screen_size = get_screen_size()
@@ -300,9 +300,9 @@ def create_wallpaper(image, description):
     # Paste the image
     wallpaper.paste(resized_img, (img_pos_x, img_pos_y))
     
-    # Add the description
+    # Add the description with proper text alignment
     # Try to find a suitable font
-    font_size = 20
+    font_size = 22  # Slightly larger font for better readability
     font_path = "/System/Library/Fonts/Supplemental/Arial.ttf"  # Default font path for macOS
     
     # Try different system fonts if the default isn't available
@@ -319,32 +319,99 @@ def create_wallpaper(image, description):
     
     try:
         font = ImageFont.truetype(font_path, font_size)
+        # Add a smaller font for longer descriptions
+        small_font = ImageFont.truetype(font_path, int(font_size * 0.85))
     except IOError:
         # Fall back to default font if TrueType font is not available
         font = ImageFont.load_default()
+        small_font = font
     
-    # Wrap text to fit the content width
-    text_width = content_width - 40  # 20px padding on each side
-    wrapped_text = textwrap.fill(description, width=int(text_width / (font_size * 0.6)))
+    # Calculate text area dimensions
+    text_area_width = content_width - 60  # 30px padding on each side
+    text_area_height = desc_height - 40   # 20px padding top and bottom
+    text_area_x = border_size + 30        # Left position of text area
+    text_area_y = frame_bottom + 20       # Top position of text area
     
-    # Calculate text size to center it
-    try:
-        # For newer Pillow versions that support textbbox
-        left, top, right, bottom = draw.textbbox((0, 0), wrapped_text, font=font)
-        text_width = right - left
-        text_height = bottom - top
-    except AttributeError:
-        # Fallback for older Pillow versions
-        text_width = font_size * len(wrapped_text.split("\n")[0]) * 0.6  # Approximate
-        text_height = font_size * len(wrapped_text.split("\n"))
+    # Clean up the description text
+    description = description.strip()
+    # Replace multiple spaces with single space
+    description = re.sub(r'\s+', ' ', description)
     
-    # Position for text - centered horizontally, below the image
-    text_x = border_size + ((content_width - text_width) // 2)
-    text_y = frame_bottom + 20  # 20px below the frame
+    # Determine if we need the smaller font for long descriptions
+    if len(description) > 300:
+        current_font = small_font
+    else:
+        current_font = font
     
-    # Draw the description text
-    text_color = (255, 255, 255)  # White text
-    draw.text((text_x, text_y), wrapped_text, fill=text_color, font=font)
+    # Function to calculate optimal text wrapping
+    def get_wrapped_text(text, font, max_width):
+        words = text.split()
+        lines = []
+        current_line = []
+        
+        for word in words:
+            # Add word to the current line
+            test_line = ' '.join(current_line + [word])
+            # Calculate width with given font
+            try:
+                left, top, right, bottom = draw.textbbox((0, 0), test_line, font=font)
+                text_width = right - left
+            except AttributeError:
+                # For older Pillow versions
+                try:
+                    text_width = draw.textlength(test_line, font=font)
+                except AttributeError:
+                    # Very old Pillow versions
+                    text_width = font.getsize(test_line)[0]
+            
+            # If adding this word exceeds max width, start a new line
+            if text_width > max_width and current_line:
+                lines.append(' '.join(current_line))
+                current_line = [word]
+            else:
+                current_line.append(word)
+        
+        # Add the last line
+        if current_line:
+            lines.append(' '.join(current_line))
+        
+        return lines
+    
+    # Get wrapped text lines
+    lines = get_wrapped_text(description, current_font, text_area_width)
+    
+    # If we have too many lines, try with smaller font
+    if len(lines) * (font_size * 1.2) > text_area_height and current_font == font:
+        current_font = small_font
+        lines = get_wrapped_text(description, current_font, text_area_width)
+    
+    # Calculate total text height
+    line_height = int(current_font.size * 1.2)  # 1.2x line spacing
+    total_text_height = len(lines) * line_height
+    
+    # Center text vertically in the allocated area
+    start_y = text_area_y + (text_area_height - total_text_height) // 2
+    
+    # Draw each line centered horizontally
+    for i, line in enumerate(lines):
+        try:
+            # For newer Pillow versions
+            left, top, right, bottom = draw.textbbox((0, 0), line, font=current_font)
+            line_width = right - left
+        except AttributeError:
+            # For older Pillow versions
+            try:
+                line_width = draw.textlength(line, font=current_font)
+            except AttributeError:
+                # Very old Pillow versions
+                line_width = current_font.getsize(line)[0]
+        
+        # Center this line
+        x = text_area_x + (text_area_width - line_width) // 2
+        y = start_y + (i * line_height)
+        
+        # Draw the text line
+        draw.text((x, y), line, fill=(200, 200, 200), font=current_font)
     
     return wallpaper
 
