@@ -234,39 +234,73 @@ def create_fallback_image():
         return blank_img
 
 def create_wallpaper(image, description):
-    """Create a wallpaper with the image and description."""
-    
+    """
+    Create a wallpaper with the image centered with a frame and description
+    centered below it with equal borders.
+    """
     # Get the screen resolution
     screen_size = get_screen_size()
     
-    # Create a new image with the screen resolution
+    # Define border size (percentage of screen width)
+    border_percentage = 0.05  # 5% border
+    border_size = int(screen_size[0] * border_percentage)
+    
+    # Define the area for content (image + text)
+    content_width = screen_size[0] - (2 * border_size)
+    content_height = screen_size[1] - (2 * border_size)
+    
+    # Allocate space for description (20% of content height)
+    desc_height = int(content_height * 0.20)
+    img_height = content_height - desc_height
+    
+    # Create a new image with the screen resolution (black background)
     wallpaper = Image.new('RGB', screen_size, color='black')
     
-    # Calculate the sizes
-    desc_height = int(screen_size[1] * 0.15)  # 15% of the height for the description
-    img_height = screen_size[1] - desc_height
-    
-    # Resize the image maintaining aspect ratio
+    # Resize the image maintaining aspect ratio to fit within the image space
     img_aspect = image.width / image.height
     img_width = int(img_height * img_aspect)
     
-    if img_width > screen_size[0]:
+    if img_width > content_width:
         # If the image is too wide, scale it down
-        img_width = screen_size[0]
+        img_width = content_width
         img_height = int(img_width / img_aspect)
     
+    # Resize the image
     resized_img = image.resize((img_width, img_height), Image.LANCZOS)
     
-    # Calculate position to center the image
-    img_pos_x = (screen_size[0] - img_width) // 2
-    img_pos_y = 0
+    # Calculate position to center the image within the content area
+    img_pos_x = border_size + ((content_width - img_width) // 2)
+    img_pos_y = border_size + ((img_height - resized_img.height) // 2)
+    
+    # Draw a frame around where the image will go
+    draw = ImageDraw.Draw(wallpaper)
+    frame_color = (100, 100, 100)  # Medium gray frame
+    
+    # Draw the frame (slightly larger than the image)
+    frame_padding = 10  # 10px padding around the image
+    frame_left = img_pos_x - frame_padding
+    frame_top = img_pos_y - frame_padding
+    frame_right = img_pos_x + img_width + frame_padding
+    frame_bottom = img_pos_y + img_height + frame_padding
+    
+    # Draw outer frame
+    draw.rectangle(
+        [frame_left - 1, frame_top - 1, frame_right + 1, frame_bottom + 1],
+        outline=(150, 150, 150),
+        width=1
+    )
+    
+    # Draw inner frame
+    draw.rectangle(
+        [frame_left, frame_top, frame_right, frame_bottom],
+        outline=frame_color,
+        width=2
+    )
     
     # Paste the image
     wallpaper.paste(resized_img, (img_pos_x, img_pos_y))
     
     # Add the description
-    draw = ImageDraw.Draw(wallpaper)
-    
     # Try to find a suitable font
     font_size = 20
     font_path = "/System/Library/Fonts/Supplemental/Arial.ttf"  # Default font path for macOS
@@ -289,15 +323,28 @@ def create_wallpaper(image, description):
         # Fall back to default font if TrueType font is not available
         font = ImageFont.load_default()
     
-    # Wrap text to fit the screen width
-    max_width = screen_size[0] - 40  # 20px padding on each side
-    wrapped_text = textwrap.fill(description, width=int(max_width / (font_size * 0.6)))
+    # Wrap text to fit the content width
+    text_width = content_width - 40  # 20px padding on each side
+    wrapped_text = textwrap.fill(description, width=int(text_width / (font_size * 0.6)))
+    
+    # Calculate text size to center it
+    try:
+        # For newer Pillow versions that support textbbox
+        left, top, right, bottom = draw.textbbox((0, 0), wrapped_text, font=font)
+        text_width = right - left
+        text_height = bottom - top
+    except AttributeError:
+        # Fallback for older Pillow versions
+        text_width = font_size * len(wrapped_text.split("\n")[0]) * 0.6  # Approximate
+        text_height = font_size * len(wrapped_text.split("\n"))
+    
+    # Position for text - centered horizontally, below the image
+    text_x = border_size + ((content_width - text_width) // 2)
+    text_y = frame_bottom + 20  # 20px below the frame
     
     # Draw the description text
     text_color = (255, 255, 255)  # White text
-    text_position = (20, img_height + 20)  # 20px padding from the top of the description area
-    
-    draw.text(text_position, wrapped_text, fill=text_color, font=font)
+    draw.text((text_x, text_y), wrapped_text, fill=text_color, font=font)
     
     return wallpaper
 
